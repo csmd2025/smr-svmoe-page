@@ -1,0 +1,14 @@
+# Large raw mesh data — kept locally only, not needed for the page
+data/vtp_full/
+E1_full_vtp/
+E3_full_vtp/
+
+# VTK.js bundle cache (re-downloaded by build_standalone.py)
+scripts/.vtk_cache.js
+
+# OS / editor cruft
+.DS_Store
+.idea/
+.vscode/
+__pycache__/
+*.pyc

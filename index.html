@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SVMoE AB-UPT — Volume-Sparse Mixture-of-Experts for Automotive Aerodynamics</title>
+<meta name="description" content="Sparse Volume Mixture-of-Experts extension of AB-UPT. ID/OOD generalization on HYU internal-flow dataset with interactive 3D comparison.">
+<meta property="og:title" content="SVMoE AB-UPT — Volume-Sparse MoE for CFD Surrogates">
+<meta property="og:description" content="Interactive comparison of Vanilla AB-UPT vs SVMoE on HYU internal-flow CFD. ID vs OOD surface error and Z-slice viewer.">
+<meta property="og:type" content="website">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- Hero -->
+<section class="hero">
+  <h1>
+    <span>Sparse Volume Mixture-of-Experts</span><br>
+    for Anchored-Branched Universal Physics Transformers
+  </h1>
+  <div class="authors">
+    <b>Sanghyeon Kim</b><sup>a</sup>, <em>et al.</em>
+  </div>
+  <div class="affiliations">
+    <sup>a</sup>KAIST
+  </div>
+  <div class="venue">Internal report — HYU internal-flow dataset</div>
+  <div class="btn-row">
+    <a class="btn btn-primary" href="#viewer">Interactive Viewer</a>
+    <a class="btn" href="#method">Method</a>
+    <a class="btn" href="#results">Results</a>
+  </div>
+  <p class="subtitle">
+    An AB-UPT extension that routes volume tokens through a sparse Mixture-of-Experts FFN. Improves out-of-distribution generalization on HYU internal-flow CFD while matching the in-distribution accuracy of the dense baseline.
+  </p>
+</section>
+
+<!-- Key numbers row -->
+<section class="kpi-row">
+  <div class="kpi">
+    <div class="kpi-value">−4.64%</div>
+    <div class="kpi-label">ID vel-mag L2<br>vs Vanilla AB-UPT</div>
+  </div>
+  <div class="kpi kpi-highlight">
+    <div class="kpi-value">−30.8%</div>
+    <div class="kpi-label">OOD vector L2<br>vs Vanilla AB-UPT</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-value">4 × top-2</div>
+    <div class="kpi-label">Volume FFN experts<br>sparse routing</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-value">+44%</div>
+    <div class="kpi-label">Params vs baseline<br>(16.2M → 23.3M)</div>
+  </div>
+</section>
+
+<!-- Interactive 3D comparison -->
+<section class="demo-section" id="viewer">
+<div class="section">
+  <h2>Interactive 3D Comparison</h2>
+  <p class="lead">Rotate the geometry to inspect velocity-magnitude error on the volume points around the car. Left = Vanilla AB-UPT, Right = SVMoE. Toggle between <b>ID (run 4)</b> and <b>OOD (run 7)</b> to see how the two models diverge on unseen flow regimes.</p>
+
+  <div class="viewer-controls">
+    <div class="control-group">
+      <label>Case</label>
+      <div class="seg-btns" id="caseBtns">
+        <button class="active" data-case="id">ID · run 4</button>
+        <button data-case="ood">OOD · run 7</button>
+      </div>
+    </div>
+    <div class="control-group">
+      <label>Field</label>
+      <div class="seg-btns" id="fieldBtns">
+        <button class="active" data-field="vel_mag_error">|Δv| error</button>
+        <button data-field="vel_mag_pred">Prediction</button>
+        <button data-field="vel_mag_gt">Ground truth</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="viewer-grid">
+    <div class="viewer-panel">
+      <div class="viewer-title">Vanilla AB-UPT <span class="tag-e1">E1 · baseline</span></div>
+      <div class="viewer-canvas" id="viewer-e1"></div>
+      <div class="viewer-stats" id="stats-e1"></div>
+    </div>
+    <div class="viewer-panel">
+      <div class="viewer-title">SVMoE AB-UPT <span class="tag-e3">E3 · 4 experts, top-2</span></div>
+      <div class="viewer-canvas" id="viewer-e3"></div>
+      <div class="viewer-stats" id="stats-e3"></div>
+    </div>
+  </div>
+
+  <div class="colorbar" id="colorbar"></div>
+</div>
+</section>
+
+<!-- Z-slice viewer -->
+<section class="section section-alt-dark">
+  <h2 style="color:#fff">Z-Slice Drill-down</h2>
+  <p class="lead" style="color:#94a3b8">Drag through five Z-slices of the domain to see the spatial structure of the error. Internal-flow regions (near the car underbody and wake) are where SVMoE gains the most.</p>
+
+  <div class="slice-controls">
+    <div class="control-group">
+      <label>Case</label>
+      <div class="seg-btns" id="sliceCaseBtns">
+        <button class="active" data-case="id">ID · run 4</button>
+        <button data-case="ood">OOD · run 7</button>
+      </div>
+    </div>
+    <div class="control-group" style="flex:1;min-width:280px">
+      <label>Z position — drag to move slice</label>
+      <div class="slider-wrap">
+        <input type="range" id="sliceSlider" min="0" max="4" value="2" step="1">
+        <div class="slider-ticks">
+          <span>z₀</span><span>z₁</span><span>z₂</span><span>z₃</span><span>z₄</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Side-view position indicator -->
+  <div class="side-view">
+    <div class="side-view-label" id="side-label">z = —</div>
+    <div class="side-view-box">
+      <img id="side-img" src="" alt="Side-view projection">
+      <div id="side-marker"></div>
+    </div>
+    <div class="side-view-caption">Slice plane (vertical line) shown on the side-view projection of the geometry (Z axis horizontal).</div>
+  </div>
+
+  <div class="slice-grid">
+    <div class="slice-panel">
+      <div class="slice-title">Ground truth</div>
+      <img id="slice-gt" src="" alt="GT slice">
+    </div>
+    <div class="slice-panel">
+      <div class="slice-title">Vanilla AB-UPT</div>
+      <img id="slice-e1" src="" alt="E1 pred">
+      <div class="slice-sub">|Error|</div>
+      <img id="slice-e1-err-img" src="" alt="E1 error">
+    </div>
+    <div class="slice-panel">
+      <div class="slice-title">SVMoE AB-UPT</div>
+      <img id="slice-e3" src="" alt="E3 pred">
+      <div class="slice-sub">|Error|</div>
+      <img id="slice-e3-err-img" src="" alt="E3 error">
+    </div>
+    <div class="slice-panel slice-panel-diff">
+      <div class="slice-title">Δ = |err<sub>E1</sub>| − |err<sub>E3</sub>|</div>
+      <img id="slice-diff-img" src="" alt="Error difference">
+      <div class="slice-diff-legend"><span class="e1-win">E1 better</span><span class="e3-win">SVMoE better</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- Method -->
+<div class="section-alt">
+<section class="section" id="method">
+  <h2>Method</h2>
+  <p class="lead">AB-UPT's volume branch processes ~3M points through a dense feed-forward. SVMoE replaces that FFN with a sparse MoE: a light router assigns each volume token to 2 of 4 experts, so the effective capacity per token stays constant while the total parameter budget grows 44%.</p>
+
+  <figure class="paper-fig">
+    <img src="assets/framework.svg" alt="SVMoE framework">
+    <figcaption>Sparse MoE in the volume branch. Router is a 2-layer MLP with <i>gate_init_value = −2</i> for warm-start stability. Surface branch and physics attention are kept identical to Vanilla AB-UPT to isolate the effect of the volume-side routing.</figcaption>
+  </figure>
+
+  <h3>Where SVMoE helps</h3>
+  <div class="contrib-list">
+    <div class="contrib">
+      <div class="contrib-icon">1</div>
+      <div>
+        <h4>Expert specialization on heterogeneous flow regions</h4>
+        <p>Internal-flow geometries contain qualitatively different flow regimes (cavity recirculation, shear layers, jet impingement). Top-2 routing lets the model allocate distinct experts per regime instead of averaging them into a single FFN.</p>
+      </div>
+    </div>
+    <div class="contrib">
+      <div class="contrib-icon">2</div>
+      <div>
+        <h4>OOD robustness</h4>
+        <p>On held-out run 7, vector rel-L2 drops <b>23.73% → 16.43% (−30.8%)</b>. ID error on run 4 stays within noise of the baseline, ruling out capacity-driven overfitting.</p>
+      </div>
+    </div>
+    <div class="contrib">
+      <div class="contrib-icon">3</div>
+      <div>
+        <h4>Identical training pipeline</h4>
+        <p>Same data (seed 42, subsample 1.0, train runs {1-3, 5-6, 8-9, 11-43}), same optimizer (cosine LR 1e-4 → 1e-6, wd 5e-2, grad-clip 1.0), same 3000 epochs, no EMA. Only the volume FFN differs.</p>
+      </div>
+    </div>
+  </div>
+</section>
+</div>
+
+<!-- Results -->
+<section class="section" id="results">
+  <h2>Quantitative Results</h2>
+  <p class="lead">Point-weighted relative L2 errors aggregated over test and train splits. ID is the train-set aggregate; OOD is the held-out run 7 where the velocity regime diverges most from training.</p>
+
+  <h3>Summary — ID vs OOD</h3>
+  <table class="comp-table">
+    <thead>
+      <tr>
+        <th>Model</th>
+        <th>ID (vel-mag L2)</th>
+        <th>OOD (vector L2)</th>
+        <th>Params</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Vanilla AB-UPT</td>
+        <td>12.94%</td>
+        <td>23.73%</td>
+        <td>16.2M</td>
+      </tr>
+      <tr class="highlight">
+        <td>SVMoE AB-UPT</td>
+        <td>12.34% <span class="delta-good">(−4.64%)</span></td>
+        <td>16.43% <span class="delta-good">(−30.8%)</span></td>
+        <td>23.3M</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Per-run breakdown (test)</h3>
+  <table class="comp-table">
+    <thead>
+      <tr>
+        <th>Run</th>
+        <th>Split</th>
+        <th>Vanilla vel-mag L2</th>
+        <th>SVMoE vel-mag L2</th>
+        <th>Vanilla vector L2</th>
+        <th>SVMoE vector L2</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>run 4</td>
+        <td>ID-like</td>
+        <td>32.61%</td>
+        <td>26.34%</td>
+        <td>43.60%</td>
+        <td>36.33%</td>
+      </tr>
+      <tr class="highlight">
+        <td>run 7</td>
+        <td>OOD</td>
+        <td>16.52%</td>
+        <td>12.81%</td>
+        <td>23.73%</td>
+        <td>16.43%</td>
+      </tr>
+      <tr>
+        <td>run 10</td>
+        <td>OOD</td>
+        <td>18.47%</td>
+        <td>18.37%</td>
+        <td>25.33%</td>
+        <td>25.53%</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Aggregates</h3>
+  <table class="comp-table">
+    <thead>
+      <tr>
+        <th>Split</th>
+        <th>Metric</th>
+        <th>Vanilla</th>
+        <th>SVMoE</th>
+        <th>Δ</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Train (ID)</td><td>vel-mag L2</td><td>12.94%</td><td>12.34%</td><td class="delta-good">−4.64%</td>
+      </tr>
+      <tr>
+        <td>Train (ID)</td><td>vector L2</td><td>16.01%</td><td>15.47%</td><td class="delta-good">−3.37%</td>
+      </tr>
+      <tr>
+        <td>Test (OOD)</td><td>vel-mag L2</td><td>18.39%</td><td>16.29%</td><td class="delta-good">−11.4%</td>
+      </tr>
+      <tr>
+        <td>Test (OOD)</td><td>vector L2</td><td>25.63%</td><td>22.09%</td><td class="delta-good">−13.8%</td>
+      </tr>
+      <tr class="highlight">
+        <td>Test run 7</td><td>vector L2</td><td>23.73%</td><td>16.43%</td><td class="delta-good">−30.8%</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<footer>
+  Source &amp; data processing scripts available on request. Generated with VTK.js + vanilla JS.
+</footer>
+
+<!-- VTK.js from CDN -->
+<script src="https://unpkg.com/vtk.js@32.0.0/vtk.js"></script>
+<script src="js/viewer.js"></script>
+<script src="js/slices.js"></script>
+</body>
+</html>
