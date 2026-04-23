@@ -2,6 +2,23 @@
 // Images are either relative URLs (server mode) or data: URIs (standalone).
 
 const sliceState = { case: 'id', z: 2 };
+let sliceMeta = null;  // populated from window.__SLICE_META__ or fetched
+
+// Cool to Warm (Extended) — shared with viewer.js
+const SLICE_COLOR_STOPS = [
+  [0.000, 0.085, 0.094, 0.490],
+  [0.150, 0.231, 0.298, 0.752],
+  [0.350, 0.553, 0.683, 0.883],
+  [0.500, 0.870, 0.870, 0.870],
+  [0.650, 0.945, 0.580, 0.480],
+  [0.850, 0.706, 0.016, 0.149],
+  [1.000, 0.404, 0.000, 0.121],
+];
+
+const SLICE_BARS = [
+  { id: 'cb-pred', range: [0, 3.0], label: 'Velocity magnitude (GT and prediction)' },
+  { id: 'cb-err',  range: [0, 0.7], label: '|Error| (per-model)' },
+];
 
 function sliceURL(name) {
   if (window.__SLICE_DATA__) return window.__SLICE_DATA__[name] || '';
@@ -30,19 +47,55 @@ function updateSideView() {
   const img = document.getElementById('side-img');
   if (img) img.src = sideURL(`side_${c}`);
 
-  const meta = (window.__SLICE_META__ || {})[c];
+  const meta = (sliceMeta || {})[c];
   const marker = document.getElementById('side-marker');
   const label = document.getElementById('side-label');
   if (!meta || !marker) return;
   const [zmin, zmax] = meta.z;
   const zval = meta.slices[z];
-  // Horizontal axis of the side-view PNG is Z (left=zmin, right=zmax)
   const pct = ((zval - zmin) / (zmax - zmin)) * 100;
   marker.style.left = `calc(${pct}% - 1px)`;
   if (label) label.textContent = `z = ${zval.toFixed(2)}  (slice ${z + 1}/5)`;
 }
 
-window.addEventListener('DOMContentLoaded', () => {
+function renderSliceColorbars() {
+  const host = document.getElementById('slice-colorbars');
+  if (!host) return;
+  const gradient = SLICE_COLOR_STOPS
+    .map(([t, r, g, b]) => `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)}) ${(t * 100).toFixed(1)}%`)
+    .join(', ');
+  host.innerHTML = SLICE_BARS.map(({ range, label }) => {
+    const [lo, hi] = range;
+    const nTicks = 6;
+    const ticks = [];
+    for (let i = 0; i <= nTicks; i++) {
+      const t = i / nTicks;
+      const v = lo + t * (hi - lo);
+      ticks.push(`<span style="left:${(t * 100).toFixed(2)}%">${v.toFixed(2)}</span>`);
+    }
+    return `
+      <div class="slice-cb">
+        <div class="cb-bar" style="background:linear-gradient(90deg, ${gradient})"></div>
+        <div class="cb-ticks">${ticks.join('')}</div>
+        <div class="cb-label">${label}</div>
+      </div>`;
+  }).join('');
+}
+
+async function loadSliceMeta() {
+  if (window.__SLICE_META__) {
+    sliceMeta = window.__SLICE_META__;
+    return;
+  }
+  try {
+    const res = await fetch('data/slice_meta.json');
+    if (res.ok) sliceMeta = await res.json();
+  } catch (e) {
+    console.warn('[slices] failed to fetch slice_meta.json', e);
+  }
+}
+
+window.addEventListener('DOMContentLoaded', async () => {
   const slider = document.getElementById('sliceSlider');
   if (slider) {
     slider.addEventListener('input', (e) => {
@@ -61,5 +114,7 @@ window.addEventListener('DOMContentLoaded', () => {
       });
     });
   }
+  renderSliceColorbars();
+  await loadSliceMeta();
   updateSlices();
 });

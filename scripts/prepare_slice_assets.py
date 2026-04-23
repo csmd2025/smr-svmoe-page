@@ -13,9 +13,21 @@ import pyvista as pv
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 from PIL import Image
 
 pv.OFF_SCREEN = True
+
+# ParaView "Cool to Warm (Extended)" — must match COLOR_STOPS in js/viewer.js
+COOL_WARM_EXT = LinearSegmentedColormap.from_list("cool_warm_ext", [
+    (0.000, (0.085, 0.094, 0.490)),
+    (0.150, (0.231, 0.298, 0.752)),
+    (0.350, (0.553, 0.683, 0.883)),
+    (0.500, (0.870, 0.870, 0.870)),
+    (0.650, (0.945, 0.580, 0.480)),
+    (0.850, (0.706, 0.016, 0.149)),
+    (1.000, (0.404, 0.000, 0.121)),
+])
 
 ROOT = Path(__file__).resolve().parents[1]
 SLICE_DIR = ROOT / "data" / "slices"
@@ -93,24 +105,19 @@ FIELD_GT = "vel_mag_gt"
 FIELD_PRED = "vel_mag_pred"
 FIELD_ERR = "vel_mag_error"
 
-
-def global_range(case, field):
-    lo, hi = np.inf, -np.inf
-    for model in ("e1", "e3"):
-        for k in range(5):
-            f = SRC[model] / CASES[case] / f"volume_slice_z_{k}.vti"
-            if not f.exists():
-                continue
-            m = pv.read(str(f))
-            a = np.asarray(m.point_data[field])
-            a = a[np.isfinite(a)]
-            if a.size:
-                lo = min(lo, float(a.min()))
-                hi = max(hi, float(a.max()))
-    return lo, hi
+# Fixed slice colorbar ranges (per user request).
+PRED_CLIM = (0.0, 3.0)   # GT and prediction (velocity magnitude)
+ERR_CLIM = (0.0, 0.7)    # absolute error
 
 
-def render_planar(mesh, field, outpath, clim, cmap="turbo"):
+def render_planar(mesh, field, outpath, clim, cmap=COOL_WARM_EXT):
+    # Replace NaNs with 0 so they render as the low-end color rather than
+    # confusing the colormap mapping with extreme outliers.
+    a = np.asarray(mesh.point_data[field])
+    a_clean = np.where(np.isfinite(a), a, 0.0).astype(np.float32)
+    mesh = mesh.copy()
+    mesh.point_data[field] = a_clean
+
     pl = pv.Plotter(off_screen=True, window_size=[640, 640])
     pl.background_color = "#0f172a"
     pl.add_mesh(
@@ -131,31 +138,33 @@ def downsize_to_jpg(png_path, jpg_path):
 
 
 for case, run_dir in CASES.items():
-    pred_clim = global_range(case, FIELD_PRED)
-    err_clim = (0.0, global_range(case, FIELD_ERR)[1])
-    # For diff: (|err_e1| - |err_e3|); symmetric around 0
-    diff_abs = 0.0
+    # Symmetric range for the diff panel (|err_e1| - |err_e3|), use percentile
+    # of absolute differences to avoid being skewed by outliers.
+    diff_vals = []
     for k in range(5):
         me1 = pv.read(str(SRC["e1"] / run_dir / f"volume_slice_z_{k}.vti"))
         me3 = pv.read(str(SRC["e3"] / run_dir / f"volume_slice_z_{k}.vti"))
         d = np.abs(np.asarray(me1.point_data[FIELD_ERR])) - np.abs(np.asarray(me3.point_data[FIELD_ERR]))
         d = d[np.isfinite(d)]
         if d.size:
-            diff_abs = max(diff_abs, float(np.max(np.abs(d))))
-    diff_clim = (-diff_abs * 0.8, diff_abs * 0.8)
+            diff_vals.append(d)
+    # Cap at 1.0 — most meaningful differences are <1, and extreme OOD outliers
+    # would otherwise flatten the whole map.
+    diff_abs = min(1.0, float(np.percentile(np.abs(np.concatenate(diff_vals)), 95))) if diff_vals else 1.0
+    diff_clim = (-diff_abs, diff_abs)
 
     for k in range(5):
         # GT (shared — from E1)
         gt = pv.read(str(SRC["e1"] / run_dir / f"volume_slice_z_{k}.vti"))
-        render_planar(gt, FIELD_GT, SLICE_DIR / f"{case}_gt_z{k}.png", pred_clim)
+        render_planar(gt, FIELD_GT, SLICE_DIR / f"{case}_gt_z{k}.png", PRED_CLIM)
         downsize_to_jpg(SLICE_DIR / f"{case}_gt_z{k}.png", SLICE_DIR / f"{case}_gt_z{k}.jpg")
 
         # Per-model pred + err
         for model in ("e1", "e3"):
             m = pv.read(str(SRC[model] / run_dir / f"volume_slice_z_{k}.vti"))
-            render_planar(m, FIELD_PRED, SLICE_DIR / f"{case}_{model}_pred_z{k}.png", pred_clim)
+            render_planar(m, FIELD_PRED, SLICE_DIR / f"{case}_{model}_pred_z{k}.png", PRED_CLIM)
             downsize_to_jpg(SLICE_DIR / f"{case}_{model}_pred_z{k}.png", SLICE_DIR / f"{case}_{model}_pred_z{k}.jpg")
-            render_planar(m, FIELD_ERR, SLICE_DIR / f"{case}_{model}_err_z{k}.png", err_clim)
+            render_planar(m, FIELD_ERR, SLICE_DIR / f"{case}_{model}_err_z{k}.png", ERR_CLIM)
             downsize_to_jpg(SLICE_DIR / f"{case}_{model}_err_z{k}.png", SLICE_DIR / f"{case}_{model}_err_z{k}.jpg")
 
         # Diff panel: compute on E1 grid (same layout), store as extra array
@@ -166,6 +175,6 @@ for case, run_dir in CASES.items():
         render_planar(me1, "err_diff", SLICE_DIR / f"{case}_diff_z{k}.png", diff_clim, cmap="RdBu_r")
         downsize_to_jpg(SLICE_DIR / f"{case}_diff_z{k}.png", SLICE_DIR / f"{case}_diff_z{k}.jpg")
 
-    print(f"[slices] {case}: clim pred={pred_clim}, err top={err_clim[1]:.3f}, diff ±{diff_clim[1]:.3f}")
+    print(f"[slices] {case}: pred=(0,3), err=(0,0.7), diff=±{diff_abs:.3f}")
 
 print("Done.")
