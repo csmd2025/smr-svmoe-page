@@ -12,8 +12,8 @@ const { vtkXMLPolyDataReader } = vtk.IO.XML;
 // Standalone build overrides by injecting window.__VTP_DATA__ with the 200K
 // subsample (keeps the single-file HTML load-able).
 const DATA = {
-  id:  { e1: 'data/vtp_full/e1_run4_volume.vtp', e3: 'data/vtp_full/e3_run4_volume.vtp' },
-  ood: { e1: 'data/vtp_full/e1_run7_volume.vtp', e3: 'data/vtp_full/e3_run7_volume.vtp' },
+  id:  { e1: 'data/vtp/e1_run4_volume.vtp', e3: 'data/vtp/e3_run4_volume.vtp' },
+  ood: { e1: 'data/vtp/e1_run7_volume.vtp', e3: 'data/vtp/e3_run7_volume.vtp' },
 };
 
 // ParaView "Cool to Warm (Extended)" — diverging colormap with darker endpoints.
