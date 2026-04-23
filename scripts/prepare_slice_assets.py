@@ -111,10 +111,13 @@ ERR_CLIM = (0.0, 0.7)    # absolute error
 
 
 def render_planar(mesh, field, outpath, clim, cmap=COOL_WARM_EXT):
-    # Replace NaNs with 0 so they render as the low-end color rather than
-    # confusing the colormap mapping with extreme outliers.
+    # Grid points outside the mesh get NaN OR extrapolated outliers (values
+    # in the hundreds/thousands) that smear across cells with
+    # interpolate_before_map. Replace NaNs and clip to a physical range so the
+    # colormap actually reflects the model's predictions.
     a = np.asarray(mesh.point_data[field])
-    a_clean = np.where(np.isfinite(a), a, 0.0).astype(np.float32)
+    a_clean = np.where(np.isfinite(a), a, 0.0)
+    a_clean = np.clip(a_clean, -50.0, 50.0).astype(np.float32)
     mesh = mesh.copy()
     mesh.point_data[field] = a_clean
 
