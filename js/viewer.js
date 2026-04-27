@@ -16,15 +16,13 @@ const DATA = {
   ood: { e1: 'data/vtp/e1_run4_volume.vtp',  e3: 'data/vtp/e3_run4_volume.vtp' },
 };
 
-// ParaView "Cool to Warm (Extended)" — diverging colormap with darker endpoints.
+// ParaView "Cool to Warm" (basic) — matches the colorbar in the reference paper figure.
 const COLOR_STOPS = [
-  [0.000, 0.085, 0.094, 0.490],
-  [0.150, 0.231, 0.298, 0.752],
-  [0.350, 0.553, 0.683, 0.883],
-  [0.500, 0.870, 0.870, 0.870],
-  [0.650, 0.945, 0.580, 0.480],
-  [0.850, 0.706, 0.016, 0.149],
-  [1.000, 0.404, 0.000, 0.121],
+  [0.000, 0.231, 0.298, 0.753],
+  [0.250, 0.554, 0.683, 0.883],
+  [0.500, 0.865, 0.865, 0.865],
+  [0.750, 0.957, 0.586, 0.487],
+  [1.000, 0.706, 0.016, 0.149],
 ];
 
 // Fixed scalar ranges per field (so colorbar values are physically meaningful).
