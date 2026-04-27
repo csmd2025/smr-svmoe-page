@@ -21,13 +21,20 @@ from PIL import Image
 
 pv.OFF_SCREEN = True
 
-# ParaView "Cool to Warm" (basic) — must match COLOR_STOPS in js/viewer.js
-COOL_WARM_EXT = LinearSegmentedColormap.from_list("cool_warm", [
-    (0.000, (0.231, 0.298, 0.753)),
-    (0.250, (0.554, 0.683, 0.883)),
-    (0.500, (0.865, 0.865, 0.865)),
-    (0.750, (0.957, 0.586, 0.487)),
-    (1.000, (0.706, 0.016, 0.149)),
+# ParaView "Cool to Warm (Extended)" — exact 11-stop ramp.
+# Must match COLOR_STOPS in js/viewer.js and js/slices.js.
+COOL_WARM_EXT = LinearSegmentedColormap.from_list("cool_warm_ext", [
+    (0.000, (0.059, 0.059, 0.471)),
+    (0.114, (0.231, 0.298, 0.753)),
+    (0.227, (0.396, 0.557, 0.847)),
+    (0.341, (0.643, 0.776, 0.922)),
+    (0.455, (0.867, 0.867, 0.867)),
+    (0.500, (0.914, 0.835, 0.816)),
+    (0.568, (0.958, 0.718, 0.659)),
+    (0.682, (0.937, 0.522, 0.405)),
+    (0.795, (0.847, 0.286, 0.227)),
+    (0.909, (0.706, 0.055, 0.149)),
+    (1.000, (0.404, 0.000, 0.122)),
 ])
 
 ROOT = Path(__file__).resolve().parents[1]

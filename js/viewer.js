@@ -16,13 +16,21 @@ const DATA = {
   ood: { e1: 'data/vtp/e1_run4_volume.vtp',  e3: 'data/vtp/e3_run4_volume.vtp' },
 };
 
-// ParaView "Cool to Warm" (basic) — matches the colorbar in the reference paper figure.
+// ParaView "Cool to Warm (Extended)" — exact 11-stop ramp.
+// Matches the reference figure colorbar: dark navy at low, near-white middle,
+// dark crimson at high. Extended endpoints give cleaner visual contrast.
 const COLOR_STOPS = [
-  [0.000, 0.231, 0.298, 0.753],
-  [0.250, 0.554, 0.683, 0.883],
-  [0.500, 0.865, 0.865, 0.865],
-  [0.750, 0.957, 0.586, 0.487],
-  [1.000, 0.706, 0.016, 0.149],
+  [0.000, 0.059, 0.059, 0.471],
+  [0.114, 0.231, 0.298, 0.753],
+  [0.227, 0.396, 0.557, 0.847],
+  [0.341, 0.643, 0.776, 0.922],
+  [0.455, 0.867, 0.867, 0.867],
+  [0.500, 0.914, 0.835, 0.816],
+  [0.568, 0.958, 0.718, 0.659],
+  [0.682, 0.937, 0.522, 0.405],
+  [0.795, 0.847, 0.286, 0.227],
+  [0.909, 0.706, 0.055, 0.149],
+  [1.000, 0.404, 0.000, 0.122],
 ];
 
 // Fixed scalar ranges per field (so colorbar values are physically meaningful).
