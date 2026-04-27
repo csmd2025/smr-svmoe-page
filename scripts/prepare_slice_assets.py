@@ -1,10 +1,13 @@
-"""Prepare slice-section assets:
+"""Prepare slice-section assets from re-trained model VTPs.
 
 1. Side-view silhouette PNG (X vs Z scatter from full mesh) for ID & OOD.
-2. Re-render the 5 z-slices with a diverging "Δ|err| = |err_e1| - |err_e3|" panel
-   so SVMoE-wins regions (positive, red) and E1-wins (negative, blue) are visible.
-3. Export Z positions + bbox JSON used by the front-end to place the slider
-   marker on the silhouette.
+2. 5 z-slabs per case showing GT/Pred/|Error| for both models, plus a
+   diverging Δ|err| panel.
+3. Slice metadata JSON for the front-end slider marker.
+
+This version reads from the full-mesh inference VTPs (which contain all
+3M points with vel_mag_gt/pred/error) and slices a thin slab around each
+Z position, rather than reading pre-computed .vti slice grids.
 """
 from pathlib import Path
 import json
@@ -35,86 +38,24 @@ SIDE_DIR = ROOT / "data" / "side"
 SLICE_DIR.mkdir(parents=True, exist_ok=True)
 SIDE_DIR.mkdir(parents=True, exist_ok=True)
 
-SRC = {
-    "e1": Path("/mnt/storage/sanghyeon-kim/HYU_preprocessing/outputs/E1_baseline_ep275"),
-    "e3": Path("/mnt/storage/sanghyeon-kim/HYU_preprocessing/outputs/E3_vmoe_ep383"),
-}
+# New: re-trained models (E1_vanilla_redo, E3_svmoe_seed7) full inference output
 FULL = {
-    "e1": Path("/mnt/storage/sanghyeon-kim/HYU_preprocessing/outputs/E1_full_vtp"),
-    "e3": Path("/mnt/storage/sanghyeon-kim/HYU_preprocessing/outputs/E3_full_vtp"),
+    "e1": Path("/mnt/storage/sanghyeon-kim/HYU_preprocessing/outputs/E1_relaunch_full_vtp"),
+    "e3": Path("/mnt/storage/sanghyeon-kim/HYU_preprocessing/outputs/E3_relaunch_full_vtp"),
 }
-CASES = {"id": "run_4", "ood": "run_7"}
+CASES = {"id": "run_10", "ood": "run_4"}
 
-# --------------------------------------------------------------
-# 1. Side-view silhouette PNGs (X vs Z scatter of full mesh)
-# --------------------------------------------------------------
-metadata = {}
-for case, run_dir in CASES.items():
-    src = FULL["e1"] / f"{run_dir}_volume_full.vtp"
-    mesh = pv.read(str(src))
-    pts = np.asarray(mesh.points)
-    # Subsample for plotting speed
-    n = len(pts)
-    pick = np.random.default_rng(0).choice(n, size=min(40_000, n), replace=False)
-    x = pts[pick, 0]
-    z = pts[pick, 2]
-
-    xmin, xmax = float(pts[:, 0].min()), float(pts[:, 0].max())
-    zmin, zmax = float(pts[:, 2].min()), float(pts[:, 2].max())
-
-    # Side view: Z horizontal (vehicle length), X vertical (height)
-    fig, ax = plt.subplots(figsize=(4.5, 1.8), dpi=140)
-    ax.scatter(z, x, s=0.4, c="#94a3b8", alpha=0.35, linewidths=0)
-    ax.set_xlim(zmin, zmax)
-    ax.set_ylim(xmin, xmax)
-    ax.set_aspect("auto")
-    ax.set_facecolor("#0f172a")
-    fig.patch.set_facecolor("#0f172a")
-    for spine in ax.spines.values():
-        spine.set_color("#334155")
-    ax.tick_params(colors="#64748b", labelsize=8, length=2)
-    ax.set_xlabel("Z (slice axis)", color="#94a3b8", fontsize=9)
-    ax.set_ylabel("X", color="#94a3b8", fontsize=9)
-    plt.tight_layout(pad=0.4)
-    out_path = SIDE_DIR / f"side_{case}.png"
-    fig.savefig(out_path, facecolor="#0f172a", dpi=140)
-    plt.close(fig)
-    # Shrink
-    img = Image.open(out_path).convert("RGB")
-    img.thumbnail((520, 260), Image.LANCZOS)
-    img.save(out_path, "PNG", optimize=True)
-
-    # Collect Z positions of existing 5 slices
-    z_positions = []
-    for k in range(5):
-        s = pv.read(str(SRC["e1"] / run_dir / f"volume_slice_z_{k}.vti"))
-        z_positions.append(float(s.bounds[4]))
-    metadata[case] = {
-        "x": [xmin, xmax],
-        "z": [zmin, zmax],
-        "slices": z_positions,
-    }
-    print(f"[side] {case}: z=[{zmin:.2f}, {zmax:.2f}], slices={[f'{v:.2f}' for v in z_positions]}")
-
-(ROOT / "data" / "slice_meta.json").write_text(json.dumps(metadata, indent=2))
-
-# --------------------------------------------------------------
-# 2. Re-render the 5 z-slices with an additional Δ|err| panel.
-# --------------------------------------------------------------
 FIELD_GT = "vel_mag_gt"
 FIELD_PRED = "vel_mag_pred"
 FIELD_ERR = "vel_mag_error"
 
-# Fixed slice colorbar ranges (per user request).
 PRED_CLIM = (0.0, 3.0)   # GT and prediction (velocity magnitude)
 ERR_CLIM = (0.0, 0.7)    # absolute error
+N_SLICES = 5             # 5 Z slabs per case
 
 
-def render_planar(mesh, field, outpath, clim, cmap=COOL_WARM_EXT):
-    # Grid points outside the mesh get NaN OR extrapolated outliers (values
-    # in the hundreds/thousands) that smear across cells with
-    # interpolate_before_map. Replace NaNs and clip to a physical range so the
-    # colormap actually reflects the model's predictions.
+def render_planar(mesh, field, outpath, clim, cmap=COOL_WARM_EXT, point_size=4):
+    """Render a point cloud as a 2D planar projection."""
     a = np.asarray(mesh.point_data[field])
     a_clean = np.where(np.isfinite(a), a, 0.0)
     a_clean = np.clip(a_clean, -50.0, 50.0).astype(np.float32)
@@ -125,7 +66,8 @@ def render_planar(mesh, field, outpath, clim, cmap=COOL_WARM_EXT):
     pl.background_color = "#0f172a"
     pl.add_mesh(
         mesh, scalars=field, clim=clim, cmap=cmap,
-        show_scalar_bar=False, interpolate_before_map=True,
+        show_scalar_bar=False, render_points_as_spheres=False,
+        point_size=point_size,
     )
     pl.view_xy()
     pl.camera.zoom(1.3)
@@ -140,44 +82,125 @@ def downsize_to_jpg(png_path, jpg_path):
     png_path.unlink(missing_ok=True)
 
 
+def slice_slab(full_mesh, z_center, slab_thickness):
+    """Extract points within a thin slab around z_center."""
+    pts = np.asarray(full_mesh.points)
+    mask = np.abs(pts[:, 2] - z_center) < (slab_thickness / 2)
+    if mask.sum() == 0:
+        return None
+    sub = pv.PolyData(pts[mask].astype(np.float32))
+    for k in [FIELD_GT, FIELD_PRED, FIELD_ERR]:
+        sub.point_data[k] = np.asarray(full_mesh.point_data[k])[mask]
+    return sub
+
+
+# --------------------------------------------------------------
+# 1. Side-view silhouette + slice metadata
+# --------------------------------------------------------------
+metadata = {}
 for case, run_dir in CASES.items():
-    # Symmetric range for the diff panel (|err_e1| - |err_e3|), use percentile
-    # of absolute differences to avoid being skewed by outliers.
+    src = FULL["e1"] / f"{run_dir}_volume_full.vtp"
+    mesh = pv.read(str(src))
+    pts = np.asarray(mesh.points)
+    n = len(pts)
+    pick = np.random.default_rng(0).choice(n, size=min(40_000, n), replace=False)
+    x = pts[pick, 0]
+    z = pts[pick, 2]
+
+    xmin, xmax = float(pts[:, 0].min()), float(pts[:, 0].max())
+    zmin, zmax = float(pts[:, 2].min()), float(pts[:, 2].max())
+
+    # Choose 5 evenly-spaced Z positions covering the data range
+    z_positions = np.linspace(zmin + (zmax - zmin) * 0.1, zmin + (zmax - zmin) * 0.9, N_SLICES).tolist()
+
+    # Side view: Z horizontal, X vertical
+    fig, ax = plt.subplots(figsize=(4.5, 1.8), dpi=140)
+    ax.scatter(z, x, s=0.4, c="#94a3b8", alpha=0.35, linewidths=0)
+    ax.set_xlim(zmin, zmax)
+    ax.set_ylim(xmin, xmax)
+    ax.set_facecolor("#0f172a")
+    fig.patch.set_facecolor("#0f172a")
+    for sp in ax.spines.values():
+        sp.set_color("#334155")
+    ax.tick_params(colors="#64748b", labelsize=8, length=2)
+    ax.set_xlabel("Z (slice axis)", color="#94a3b8", fontsize=9)
+    ax.set_ylabel("X", color="#94a3b8", fontsize=9)
+    plt.tight_layout(pad=0.4)
+    out_path = SIDE_DIR / f"side_{case}.png"
+    fig.savefig(out_path, facecolor="#0f172a", dpi=140)
+    plt.close(fig)
+    img = Image.open(out_path).convert("RGB")
+    img.thumbnail((520, 260), Image.LANCZOS)
+    img.save(out_path, "PNG", optimize=True)
+
+    metadata[case] = {
+        "x": [xmin, xmax],
+        "z": [zmin, zmax],
+        "slices": z_positions,
+    }
+    print(f"[side] {case} ({run_dir}): z=[{zmin:.2f},{zmax:.2f}], slices={[f'{v:.2f}' for v in z_positions]}")
+
+(ROOT / "data" / "slice_meta.json").write_text(json.dumps(metadata, indent=2))
+
+# --------------------------------------------------------------
+# 2. Render slices from full VTP (slab around each Z position)
+# --------------------------------------------------------------
+for case, run_dir in CASES.items():
+    e1_full = pv.read(str(FULL["e1"] / f"{run_dir}_volume_full.vtp"))
+    e3_full = pv.read(str(FULL["e3"] / f"{run_dir}_volume_full.vtp"))
+    z_positions = metadata[case]["slices"]
+    z_extent = metadata[case]["z"][1] - metadata[case]["z"][0]
+    slab_thickness = z_extent / N_SLICES * 0.6  # 60% of inter-slice spacing
+
+    # Diff range — capped at 1.0 to keep meaningful contrast
     diff_vals = []
-    for k in range(5):
-        me1 = pv.read(str(SRC["e1"] / run_dir / f"volume_slice_z_{k}.vti"))
-        me3 = pv.read(str(SRC["e3"] / run_dir / f"volume_slice_z_{k}.vti"))
-        d = np.abs(np.asarray(me1.point_data[FIELD_ERR])) - np.abs(np.asarray(me3.point_data[FIELD_ERR]))
+    for k in range(N_SLICES):
+        zc = z_positions[k]
+        s_e1 = slice_slab(e1_full, zc, slab_thickness)
+        s_e3 = slice_slab(e3_full, zc, slab_thickness)
+        if s_e1 is None or s_e3 is None:
+            continue
+        # Pair points by spatial nearest-neighbor (assume same point set)
+        a1 = np.abs(np.asarray(s_e1.point_data[FIELD_ERR]))
+        a3 = np.abs(np.asarray(s_e3.point_data[FIELD_ERR]))
+        # truncate to common length (in case slab masks differ slightly)
+        n = min(len(a1), len(a3))
+        d = a1[:n] - a3[:n]
         d = d[np.isfinite(d)]
         if d.size:
             diff_vals.append(d)
-    # Cap at 1.0 — most meaningful differences are <1, and extreme OOD outliers
-    # would otherwise flatten the whole map.
     diff_abs = min(1.0, float(np.percentile(np.abs(np.concatenate(diff_vals)), 95))) if diff_vals else 1.0
     diff_clim = (-diff_abs, diff_abs)
 
-    for k in range(5):
-        # GT (shared — from E1)
-        gt = pv.read(str(SRC["e1"] / run_dir / f"volume_slice_z_{k}.vti"))
-        render_planar(gt, FIELD_GT, SLICE_DIR / f"{case}_gt_z{k}.png", PRED_CLIM)
+    for k, zc in enumerate(z_positions):
+        s_e1 = slice_slab(e1_full, zc, slab_thickness)
+        s_e3 = slice_slab(e3_full, zc, slab_thickness)
+        if s_e1 is None or s_e3 is None:
+            print(f"  [skip] {case} z{k} no points in slab")
+            continue
+
+        # GT (shared from E1)
+        render_planar(s_e1, FIELD_GT, SLICE_DIR / f"{case}_gt_z{k}.png", PRED_CLIM)
         downsize_to_jpg(SLICE_DIR / f"{case}_gt_z{k}.png", SLICE_DIR / f"{case}_gt_z{k}.jpg")
 
-        # Per-model pred + err
-        for model in ("e1", "e3"):
-            m = pv.read(str(SRC[model] / run_dir / f"volume_slice_z_{k}.vti"))
-            render_planar(m, FIELD_PRED, SLICE_DIR / f"{case}_{model}_pred_z{k}.png", PRED_CLIM)
+        for model, slab in [("e1", s_e1), ("e3", s_e3)]:
+            render_planar(slab, FIELD_PRED, SLICE_DIR / f"{case}_{model}_pred_z{k}.png", PRED_CLIM)
             downsize_to_jpg(SLICE_DIR / f"{case}_{model}_pred_z{k}.png", SLICE_DIR / f"{case}_{model}_pred_z{k}.jpg")
-            render_planar(m, FIELD_ERR, SLICE_DIR / f"{case}_{model}_err_z{k}.png", ERR_CLIM)
+            slab_abs = slab.copy()
+            slab_abs.point_data[FIELD_ERR] = np.abs(np.asarray(slab.point_data[FIELD_ERR]))
+            render_planar(slab_abs, FIELD_ERR, SLICE_DIR / f"{case}_{model}_err_z{k}.png", ERR_CLIM)
             downsize_to_jpg(SLICE_DIR / f"{case}_{model}_err_z{k}.png", SLICE_DIR / f"{case}_{model}_err_z{k}.jpg")
 
-        # Diff panel: compute on E1 grid (same layout), store as extra array
-        me1 = pv.read(str(SRC["e1"] / run_dir / f"volume_slice_z_{k}.vti"))
-        me3 = pv.read(str(SRC["e3"] / run_dir / f"volume_slice_z_{k}.vti"))
-        d = np.abs(np.asarray(me1.point_data[FIELD_ERR])) - np.abs(np.asarray(me3.point_data[FIELD_ERR]))
-        me1.point_data["err_diff"] = d.astype(np.float32)
-        render_planar(me1, "err_diff", SLICE_DIR / f"{case}_diff_z{k}.png", diff_clim, cmap="RdBu_r")
+        # Diff panel
+        a1 = np.abs(np.asarray(s_e1.point_data[FIELD_ERR]))
+        a3 = np.abs(np.asarray(s_e3.point_data[FIELD_ERR]))
+        n = min(len(a1), len(a3))
+        d = a1[:n] - a3[:n]
+        diff_slab = pv.PolyData(np.asarray(s_e1.points)[:n].astype(np.float32))
+        diff_slab.point_data["err_diff"] = d.astype(np.float32)
+        render_planar(diff_slab, "err_diff", SLICE_DIR / f"{case}_diff_z{k}.png", diff_clim, cmap="RdBu_r")
         downsize_to_jpg(SLICE_DIR / f"{case}_diff_z{k}.png", SLICE_DIR / f"{case}_diff_z{k}.jpg")
 
-    print(f"[slices] {case}: pred=(0,3), err=(0,0.7), diff=±{diff_abs:.3f}")
+    print(f"[slices] {case} ({run_dir}): pred=(0,3), err=(0,0.7), diff=±{diff_abs:.3f}")
 
 print("Done.")

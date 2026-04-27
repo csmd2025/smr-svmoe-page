@@ -18,15 +18,15 @@ TARGET_POINTS = 200_000
 SEED = 42
 
 FULL_VTP_DIR = {
-    "e1": Path("/mnt/storage/sanghyeon-kim/HYU_preprocessing/outputs/E1_full_vtp"),
-    "e3": Path("/mnt/storage/sanghyeon-kim/HYU_preprocessing/outputs/E3_full_vtp"),
+    "e1": Path("/mnt/storage/sanghyeon-kim/HYU_preprocessing/outputs/E1_relaunch_full_vtp"),
+    "e3": Path("/mnt/storage/sanghyeon-kim/HYU_preprocessing/outputs/E3_relaunch_full_vtp"),
 }
 # Fallback for runs that don't have the full-mesh inference yet.
 GRID_ROOT = {
     "e1": Path("/mnt/storage/sanghyeon-kim/HYU_preprocessing/outputs/E1_baseline_ep275"),
     "e3": Path("/mnt/storage/sanghyeon-kim/HYU_preprocessing/outputs/E3_vmoe_ep383"),
 }
-CASES = {"run4": "run_4", "run7": "run_7"}
+CASES = {"run10": "run_10", "run4": "run_4"}
 VEL_THRESHOLD = 0.02
 
 
