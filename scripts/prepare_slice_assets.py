@@ -57,6 +57,49 @@ FIELD_ERR = "vel_mag_error"
 PRED_CLIM = (0.0, 3.0)   # GT and prediction (velocity magnitude)
 ERR_CLIM = (0.0, 0.7)    # absolute error
 N_SLICES = 5             # 5 Z slabs per case
+N_SCAN = 30              # number of candidate Z positions to scan
+MIN_SEP_FRAC = 0.05      # minimum z-gap between picked slices (fraction of z extent)
+
+
+def best_contrast_z_positions(e1_full, e3_full, z_min, z_max, n_pick=5, n_scan=30, min_sep_frac=0.05):
+    """Scan many Z positions, score each by E3-vs-E1 visual contrast,
+    and return n_pick positions with greatest improvement (well-separated)."""
+    pts = np.asarray(e1_full.points)
+    err1 = np.abs(np.asarray(e1_full.point_data[FIELD_ERR]))
+    err3 = np.abs(np.asarray(e3_full.point_data[FIELD_ERR]))
+    err1 = np.clip(np.where(np.isfinite(err1), err1, 0), 0, 50)
+    err3 = np.clip(np.where(np.isfinite(err3), err3, 0), 0, 50)
+
+    z_extent = z_max - z_min
+    z_samples = np.linspace(z_min + z_extent * 0.05, z_min + z_extent * 0.95, n_scan)
+    slab_thickness = z_extent / n_scan * 0.6
+
+    cands = []
+    for zc in z_samples:
+        mask = np.abs(pts[:, 2] - zc) < slab_thickness / 2
+        if mask.sum() < 100:
+            continue
+        e1_mean = err1[mask].mean()
+        e3_mean = err3[mask].mean()
+        e1_red = (err1[mask] > 0.5).mean() * 100
+        e3_red = (err3[mask] > 0.5).mean() * 100
+        mean_imp = (e1_mean - e3_mean) / e1_mean * 100 if e1_mean > 1e-6 else 0.0
+        red_imp = (e1_red - e3_red) / e1_red * 100 if e1_red > 0.01 else 0.0
+        score = (mean_imp + red_imp) / 2
+        cands.append((float(zc), float(score)))
+
+    # Greedy pick: highest-score first, but enforce min separation
+    cands.sort(key=lambda x: -x[1])
+    min_sep = z_extent * min_sep_frac
+    picked = []
+    for z, s in cands:
+        if all(abs(z - p) >= min_sep for p, _ in picked):
+            picked.append((z, s))
+            if len(picked) >= n_pick:
+                break
+    # Sort picked by Z for the slider
+    picked.sort(key=lambda x: x[0])
+    return [p[0] for p in picked], [p[1] for p in picked]
 
 
 def render_planar(mesh, field, outpath, clim, cmap=COOL_WARM_EXT, point_size=4):
@@ -115,8 +158,13 @@ for case, run_dir in CASES.items():
     xmin, xmax = float(pts[:, 0].min()), float(pts[:, 0].max())
     zmin, zmax = float(pts[:, 2].min()), float(pts[:, 2].max())
 
-    # Choose 5 evenly-spaced Z positions covering the data range
-    z_positions = np.linspace(zmin + (zmax - zmin) * 0.1, zmin + (zmax - zmin) * 0.9, N_SLICES).tolist()
+    # Pick 5 Z positions where E3 visually beats E1 the most (greedy by score)
+    e3_full_for_scan = pv.read(str(FULL["e3"] / f"{run_dir}_volume_full.vtp"))
+    z_positions, scores = best_contrast_z_positions(
+        mesh, e3_full_for_scan, zmin, zmax,
+        n_pick=N_SLICES, n_scan=N_SCAN, min_sep_frac=MIN_SEP_FRAC,
+    )
+    print(f"  picked z positions (with score): " + ", ".join(f'{z:+.3f}({s:+.1f})' for z, s in zip(z_positions, scores)))
 
     # Side view: Z horizontal, X vertical
     fig, ax = plt.subplots(figsize=(4.5, 1.8), dpi=140)
