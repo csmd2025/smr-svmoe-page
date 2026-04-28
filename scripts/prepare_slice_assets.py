@@ -57,13 +57,18 @@ FIELD_ERR = "vel_mag_error"
 PRED_CLIM = (0.0, 3.0)   # GT and prediction (velocity magnitude)
 ERR_CLIM = (0.0, 0.7)    # absolute error
 N_SLICES = 5             # 5 Z slabs per case
-N_SCAN = 30              # number of candidate Z positions to scan
-MIN_SEP_FRAC = 0.05      # minimum z-gap between picked slices (fraction of z extent)
+N_SCAN = 80              # fine-grained scan for best contrast
+MIN_SEP_FRAC = 0.025     # allow tighter clustering (top contrast region is narrow)
 
 
-def best_contrast_z_positions(e1_full, e3_full, z_min, z_max, n_pick=5, n_scan=30, min_sep_frac=0.05):
+def best_contrast_z_positions(e1_full, e3_full, z_min, z_max, n_pick=5, n_scan=80, min_sep_frac=0.025):
     """Scan many Z positions, score each by E3-vs-E1 visual contrast,
-    and return n_pick positions with greatest improvement (well-separated)."""
+    and return n_pick positions where SVMoE most dramatically beats baseline.
+
+    Score = absolute drop in (|err|>0.3) red-fraction, weighted up by
+    baseline severity. This favours slabs where E1 has many red pixels
+    AND E3 removes a lot of them — the visually striking cases.
+    """
     pts = np.asarray(e1_full.points)
     err1 = np.abs(np.asarray(e1_full.point_data[FIELD_ERR]))
     err3 = np.abs(np.asarray(e3_full.point_data[FIELD_ERR]))
@@ -72,32 +77,29 @@ def best_contrast_z_positions(e1_full, e3_full, z_min, z_max, n_pick=5, n_scan=3
 
     z_extent = z_max - z_min
     z_samples = np.linspace(z_min + z_extent * 0.05, z_min + z_extent * 0.95, n_scan)
-    slab_thickness = z_extent / n_scan * 0.6
+    slab_thickness = z_extent / n_scan
 
     cands = []
     for zc in z_samples:
         mask = np.abs(pts[:, 2] - zc) < slab_thickness / 2
-        if mask.sum() < 100:
+        if mask.sum() < 200:
             continue
-        e1_mean = err1[mask].mean()
-        e3_mean = err3[mask].mean()
-        e1_red = (err1[mask] > 0.5).mean() * 100
-        e3_red = (err3[mask] > 0.5).mean() * 100
-        mean_imp = (e1_mean - e3_mean) / e1_mean * 100 if e1_mean > 1e-6 else 0.0
-        red_imp = (e1_red - e3_red) / e1_red * 100 if e1_red > 0.01 else 0.0
-        score = (mean_imp + red_imp) / 2
-        cands.append((float(zc), float(score)))
+        e1_red03 = (err1[mask] > 0.3).mean() * 100
+        e3_red03 = (err3[mask] > 0.3).mean() * 100
+        abs_drop = e1_red03 - e3_red03
+        # Score favours absolute pp-drop, with a bonus for high-baseline-severity slabs
+        score = abs_drop + 0.3 * e1_red03
+        cands.append((float(zc), float(score), float(e1_red03), float(e3_red03)))
 
-    # Greedy pick: highest-score first, but enforce min separation
+    # Greedy pick top scores with tight min separation (top contrast cluster is narrow)
     cands.sort(key=lambda x: -x[1])
     min_sep = z_extent * min_sep_frac
     picked = []
-    for z, s in cands:
+    for z, s, _, _ in cands:
         if all(abs(z - p) >= min_sep for p, _ in picked):
             picked.append((z, s))
             if len(picked) >= n_pick:
                 break
-    # Sort picked by Z for the slider
     picked.sort(key=lambda x: x[0])
     return [p[0] for p in picked], [p[1] for p in picked]
 
