@@ -56,9 +56,9 @@ FIELD_ERR = "vel_mag_error"
 
 PRED_CLIM = (0.0, 3.0)   # GT and prediction (velocity magnitude)
 ERR_CLIM = (0.0, 0.7)    # absolute error
-N_SLICES = 5             # 5 Z slabs per case
-N_SCAN = 80              # fine-grained scan for best contrast
-MIN_SEP_FRAC = 0.025     # allow tighter clustering (top contrast region is narrow)
+N_SLICES = 10            # 10 Z slabs per case
+N_SCAN = 100             # fine-grained scan for best contrast
+MIN_SEP_FRAC = 0.02      # allow tight clustering (top contrast region is narrow)
 
 
 def best_contrast_z_positions(e1_full, e3_full, z_min, z_max, n_pick=5, n_scan=80, min_sep_frac=0.025):
