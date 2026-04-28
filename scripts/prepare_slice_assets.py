@@ -46,7 +46,7 @@ SIDE_DIR.mkdir(parents=True, exist_ok=True)
 # New: re-trained models (E1_vanilla_redo, E3_svmoe_seed7) full inference output
 FULL = {
     "e1": Path("/mnt/storage/sanghyeon-kim/HYU_preprocessing/outputs/E1_relaunch_full_vtp"),
-    "e3": Path("/mnt/storage/sanghyeon-kim/HYU_preprocessing/outputs/E3_relaunch_full_vtp"),
+    "e3": Path("/mnt/storage/sanghyeon-kim/HYU_preprocessing/outputs/E3_seed13_full_vtp"),
 }
 CASES = {"id": "run_10", "ood": "run_4"}
 

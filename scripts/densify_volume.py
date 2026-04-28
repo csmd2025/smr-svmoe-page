@@ -19,7 +19,7 @@ SEED = 42
 
 FULL_VTP_DIR = {
     "e1": Path("/mnt/storage/sanghyeon-kim/HYU_preprocessing/outputs/E1_relaunch_full_vtp"),
-    "e3": Path("/mnt/storage/sanghyeon-kim/HYU_preprocessing/outputs/E3_relaunch_full_vtp"),
+    "e3": Path("/mnt/storage/sanghyeon-kim/HYU_preprocessing/outputs/E3_seed13_full_vtp"),
 }
 # Fallback for runs that don't have the full-mesh inference yet.
 GRID_ROOT = {

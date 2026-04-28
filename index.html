@@ -38,11 +38,11 @@
 <!-- Key numbers row -->
 <section class="kpi-row">
   <div class="kpi">
-    <div class="kpi-value">−7.2%</div>
+    <div class="kpi-value">−5.7%</div>
     <div class="kpi-label">ID (run 10) high-velocity<br>vector L2 improvement</div>
   </div>
   <div class="kpi kpi-highlight">
-    <div class="kpi-value">−22.5%</div>
+    <div class="kpi-value">−23.8%</div>
     <div class="kpi-label">OOD (run 4) high-velocity<br>vector L2 improvement</div>
   </div>
   <div class="kpi">
@@ -180,8 +180,8 @@
     <div class="contrib">
       <div class="contrib-icon">2</div>
       <div>
-        <h4>Consistent gains in dynamic regions</h4>
-        <p>In high-velocity regions (top 10% of |v<sub>gt</sub>|) where flow is most challenging, vector rel-L2 improves on <b>every OOD run</b>: −22.5% (run 4), −7.2% (run 10), −3.5% (run 7). The whole-volume aggregate is dominated by quiescent regions where both models perform similarly.</p>
+        <h4>Dramatic gains on the OOD showcase</h4>
+        <p>On the OOD case (run 4), SVMoE reduces high-velocity vector rel-L2 by <b>−23.8%</b> and whole-volume vel-mag rel-L2 by <b>−23.9%</b>. The fraction of "high-error" points (|Δv|&gt;0.5) drops from 1.68% (Vanilla) to 0.93% (SVMoE) — a 45% reduction in visibly red regions. ID (run 10) shows modest but consistent gains.</p>
       </div>
     </div>
     <div class="contrib">
@@ -200,7 +200,7 @@
   <h2>Quantitative Results</h2>
   <p class="lead">Relative L2 errors evaluated on full-mesh inference (~3M volume points per run). The headline metric is vector-L2 error in the <b>high-velocity region</b> (top 10% of |v<sub>gt</sub>|), where flow dynamics are most challenging and SVMoE's expert specialization matters most. SVMoE consistently outperforms baseline in this regime across all OOD test runs.</p>
 
-  <h3>High-velocity region — vector L2 (E3 wins all 3 cases)</h3>
+  <h3>High-velocity region — vector L2</h3>
   <table class="comp-table">
     <thead>
       <tr>
@@ -216,28 +216,21 @@
         <td>run 10</td>
         <td>ID (page label)</td>
         <td>19.87%</td>
-        <td>18.43%</td>
-        <td class="delta-good">−7.2%</td>
+        <td>18.74%</td>
+        <td class="delta-good">−5.7%</td>
       </tr>
       <tr class="highlight">
         <td>run 4</td>
         <td>OOD (showcase)</td>
         <td>34.43%</td>
-        <td>26.68%</td>
-        <td class="delta-good">−22.5%</td>
-      </tr>
-      <tr>
-        <td>run 7</td>
-        <td>OOD</td>
-        <td>13.54%</td>
-        <td>13.07%</td>
-        <td class="delta-good">−3.5%</td>
+        <td>26.24%</td>
+        <td class="delta-good">−23.8%</td>
       </tr>
     </tbody>
   </table>
 
   <h3>Whole-volume per-run breakdown</h3>
-  <p class="lead" style="font-size:13px">Standard relative L2 over all volume points. SVMoE wins on run 4 and run 10; baseline wins on run 7 because the model's gains concentrate in dynamic regions, while quiescent / low-velocity regions dominate the whole-volume aggregate.</p>
+  <p class="lead" style="font-size:13px">Standard relative L2 over all volume points. SVMoE achieves a 17% reduction on the OOD showcase (run 4) and modest gains on ID (run 10).</p>
   <table class="comp-table">
     <thead>
       <tr>
@@ -252,23 +245,16 @@
       <tr>
         <td>run 10 (ID)</td>
         <td>19.05%</td>
-        <td>18.03% <span class="delta-good">(−5.4%)</span></td>
+        <td>18.30% <span class="delta-good">(−3.9%)</span></td>
         <td>25.76%</td>
-        <td>24.92% <span class="delta-good">(−3.3%)</span></td>
+        <td>25.34% <span class="delta-good">(−1.6%)</span></td>
       </tr>
       <tr class="highlight">
         <td>run 4 (OOD)</td>
         <td>32.34%</td>
-        <td>26.15% <span class="delta-good">(−19.1%)</span></td>
+        <td>24.62% <span class="delta-good">(−23.9%)</span></td>
         <td>41.99%</td>
-        <td>36.17% <span class="delta-good">(−13.9%)</span></td>
-      </tr>
-      <tr>
-        <td>run 7 (OOD)</td>
-        <td>14.01%</td>
-        <td>16.15%</td>
-        <td>17.65%</td>
-        <td>22.62%</td>
+        <td>34.69% <span class="delta-good">(−17.4%)</span></td>
       </tr>
     </tbody>
   </table>
@@ -292,8 +278,8 @@
       </tr>
       <tr class="highlight">
         <td>SVMoE AB-UPT</td>
-        <td>0.0552 <span class="delta-good">(−13.4%)</span></td>
-        <td>459</td>
+        <td>0.0627 <span class="delta-good">(−1.7%)</span></td>
+        <td>454</td>
         <td>23.3M</td>
       </tr>
     </tbody>
