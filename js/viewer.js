@@ -204,12 +204,18 @@ function updateStats() {
 function wireButtons(groupId, key) {
   const group = document.getElementById(groupId);
   if (!group) return;
+  const grid = document.querySelector('.viewer-grid');
   group.querySelectorAll('button').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
+      if (btn.classList.contains('active')) return;
       group.querySelectorAll('button').forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
       state[key] = btn.dataset[key];
-      refresh();
+      if (grid && window.withInference) {
+        await window.withInference(grid, () => refresh());
+      } else {
+        refresh();
+      }
     });
   });
 }

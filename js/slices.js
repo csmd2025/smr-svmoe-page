@@ -108,13 +108,19 @@ window.addEventListener('DOMContentLoaded', async () => {
     });
   }
   const caseBtns = document.getElementById('sliceCaseBtns');
+  const sliceGrid = document.querySelector('.slice-grid');
   if (caseBtns) {
     caseBtns.querySelectorAll('button').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
+        if (btn.classList.contains('active')) return;
         caseBtns.querySelectorAll('button').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
         sliceState.case = btn.dataset.case;
-        updateSlices();
+        if (sliceGrid && window.withInference) {
+          await window.withInference(sliceGrid, () => updateSlices());
+        } else {
+          updateSlices();
+        }
       });
     });
   }
