@@ -123,7 +123,7 @@ a:hover{text-decoration:underline}
 .side-view-label{color:#e2e8f0;font-size:13px;font-weight:600;margin-bottom:8px;font-family:ui-monospace,Menlo,monospace}
 .side-view-box{position:relative;width:100%;max-width:640px;margin:0 auto;border-radius:6px;overflow:hidden;background:#0f172a}
 .side-view-box img{display:block;width:100%;height:auto}
-#side-marker{position:absolute;top:0;bottom:0;width:2px;background:#f97316;box-shadow:0 0 8px rgba(249,115,22,0.7);pointer-events:none;transition:left .15s ease}
+#side-marker{position:absolute;top:0;height:100%;width:2px;background:#f97316;box-shadow:0 0 8px rgba(249,115,22,0.7);pointer-events:none;transition:left .15s ease}
 .side-view-caption{color:#64748b;font-size:11px;text-align:center;margin-top:8px}
 
 /* Contributions */

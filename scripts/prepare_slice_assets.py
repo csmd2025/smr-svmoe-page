@@ -181,6 +181,13 @@ for case, run_dir in CASES.items():
     ax.set_xlabel("Z (slice axis)", color="#94a3b8", fontsize=9)
     ax.set_ylabel("X", color="#94a3b8", fontsize=9)
     plt.tight_layout(pad=0.4)
+    # Capture axes bbox in figure-relative coords (image resize preserves these ratios).
+    # matplotlib y is bottom-up; flip to image (top-down) coords so JS can use directly.
+    pos = ax.get_position()
+    axes_bbox = {
+        "x": [float(pos.x0), float(pos.x1)],
+        "y": [float(1.0 - pos.y1), float(1.0 - pos.y0)],
+    }
     out_path = SIDE_DIR / f"side_{case}.png"
     fig.savefig(out_path, facecolor="#0f172a", dpi=140)
     plt.close(fig)
@@ -192,6 +199,7 @@ for case, run_dir in CASES.items():
         "x": [xmin, xmax],
         "z": [zmin, zmax],
         "slices": z_positions,
+        "axes_bbox": axes_bbox,
     }
     print(f"[side] {case} ({run_dir}): z=[{zmin:.2f},{zmax:.2f}], slices={[f'{v:.2f}' for v in z_positions]}")
 

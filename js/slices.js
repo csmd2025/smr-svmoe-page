@@ -57,9 +57,15 @@ function updateSideView() {
   if (!meta || !marker) return;
   const [zmin, zmax] = meta.z;
   const zval = meta.slices[z];
-  const pct = ((zval - zmin) / (zmax - zmin)) * 100;
+  const bbox = meta.axes_bbox || { x: [0, 1], y: [0, 1] };
+  const [bx0, bx1] = bbox.x;
+  const [by0, by1] = bbox.y;
+  const t = (zval - zmin) / (zmax - zmin);
+  const pct = (bx0 + t * (bx1 - bx0)) * 100;
   marker.style.left = `calc(${pct}% - 1px)`;
-  if (label) label.textContent = `z = ${zval.toFixed(2)}  (slice ${z + 1}/5)`;
+  marker.style.top = `${(by0 * 100).toFixed(2)}%`;
+  marker.style.height = `${((by1 - by0) * 100).toFixed(2)}%`;
+  if (label) label.textContent = `z = ${zval.toFixed(2)}  (slice ${z + 1}/${meta.slices.length})`;
 }
 
 function renderSliceColorbars() {
