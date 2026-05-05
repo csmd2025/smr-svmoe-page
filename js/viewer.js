@@ -201,7 +201,7 @@ function updateStats() {
   if (statsE3) statsE3.textContent = fmt(compute(viewerE3?.currentPolydata, state.field));
 }
 
-function wireButtons(groupId, key) {
+function wireButtons(groupId, key, onChange, onBefore) {
   const group = document.getElementById(groupId);
   if (!group) return;
   const grid = document.querySelector('.viewer-grid');
@@ -211,16 +211,150 @@ function wireButtons(groupId, key) {
       group.querySelectorAll('button').forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
       state[key] = btn.dataset[key];
+      onBefore?.();
       if (grid && window.withInference) {
         await window.withInference(grid, () => refresh());
       } else {
-        refresh();
+        await refresh();
       }
+      onChange?.();
     });
   });
 }
 
-window.addEventListener('DOMContentLoaded', () => {
+// Linked-camera sync — rotate/zoom/pan in one viewer mirrors the other.
+let isSyncing = false;
+function syncCameraFromTo(srcCam, dst) {
+  const c = dst.renderer.getActiveCamera();
+  c.setPosition(...srcCam.getPosition());
+  c.setFocalPoint(...srcCam.getFocalPoint());
+  c.setViewUp(...srcCam.getViewUp());
+  c.setParallelScale(srcCam.getParallelScale());
+  c.setViewAngle(srcCam.getViewAngle());
+  dst.renderer.resetCameraClippingRange();
+  dst.renderWindow.render();
+}
+
+function linkCameras(a, b) {
+  const camA = a.renderer.getActiveCamera();
+  const camB = b.renderer.getActiveCamera();
+  camA.onModified(() => {
+    if (isSyncing) return;
+    isSyncing = true;
+    syncCameraFromTo(camA, b);
+    isSyncing = false;
+  });
+  camB.onModified(() => {
+    if (isSyncing) return;
+    isSyncing = true;
+    syncCameraFromTo(camB, a);
+    isSyncing = false;
+  });
+}
+
+// Rotate a 3-vector around a world axis (0=X, 1=Y, 2=Z) by `angle` radians.
+// Right-hand rule: positive angle = counterclockwise when looking down +axis.
+function rotateAroundWorldAxis(v, axis, angle) {
+  const c = Math.cos(angle), s = Math.sin(angle);
+  const [x, y, z] = v;
+  if (axis === 0) return [x, c * y - s * z, s * y + c * z]; // around X
+  if (axis === 1) return [c * x + s * z, y, -s * x + c * z]; // around Y
+  return [c * x - s * y, s * x + c * y, z];                  // around Z
+}
+
+// Rotate camera position (relative to focal point) AND viewUp around a world
+// axis through the focal point. This is a true world-axis orbit, unlike vtk's
+// camera-frame azimuth/elevation/roll which are relative to viewUp/right/view.
+// Snapshot/restore the full camera pose so we can return to the exact
+// first-page-load view after the user has manually rotated/zoomed.
+let initialCamState = null;
+function captureCamState(viewer) {
+  const c = viewer.renderer.getActiveCamera();
+  return {
+    position: Array.from(c.getPosition()),
+    focalPoint: Array.from(c.getFocalPoint()),
+    viewUp: Array.from(c.getViewUp()),
+    parallelScale: c.getParallelScale(),
+    viewAngle: c.getViewAngle(),
+  };
+}
+function restoreCamState(viewer, s) {
+  const c = viewer.renderer.getActiveCamera();
+  c.setPosition(s.position[0], s.position[1], s.position[2]);
+  c.setFocalPoint(s.focalPoint[0], s.focalPoint[1], s.focalPoint[2]);
+  c.setViewUp(s.viewUp[0], s.viewUp[1], s.viewUp[2]);
+  c.setParallelScale(s.parallelScale);
+  c.setViewAngle(s.viewAngle);
+  viewer.renderer.resetCameraClippingRange();
+  viewer.renderWindow.render();
+}
+
+function rotateCameraAroundWorldAxis(camera, axis, angle) {
+  const fp = camera.getFocalPoint();
+  const pos = camera.getPosition();
+  const up = camera.getViewUp();
+  const rel = [pos[0] - fp[0], pos[1] - fp[1], pos[2] - fp[2]];
+  const newRel = rotateAroundWorldAxis(rel, axis, angle);
+  const newUp = rotateAroundWorldAxis(up, axis, angle);
+  camera.setPosition(fp[0] + newRel[0], fp[1] + newRel[1], fp[2] + newRel[2]);
+  camera.setViewUp(newUp[0], newUp[1], newUp[2]);
+}
+
+// Intro auto-rotation — two-phase sequence:
+//   Phase 1: world +X axis by 90°  (tip the wedge into long-axis-vertical pose)
+//   Phase 2: world +Z axis by 360° (full revolution around vertical axis)
+// Rotates one camera; linked sync mirrors to the other. User interaction
+// (pointerdown / wheel) cancels immediately. Calling while a previous
+// rotation is in flight cancels the old one first.
+let cancelCurrentAutoRotation = null;
+function startAutoRotation(viewers, opts = {}) {
+  const {
+    tipDurationMs = 1200,
+    spinDurationMs = 3000,
+    tipDeg = 90,
+    spinDeg = 360,
+  } = opts;
+  if (!viewers.every(Boolean)) return;
+  if (cancelCurrentAutoRotation) cancelCurrentAutoRotation();
+
+  const camera = viewers[0].renderer.getActiveCamera();
+  let cancelled = false;
+  const cancel = () => { cancelled = true; };
+  cancelCurrentAutoRotation = cancel;
+  viewers.forEach((v) => {
+    v.container.addEventListener('pointerdown', cancel, { once: true });
+    v.container.addEventListener('wheel', cancel, { once: true, passive: true });
+  });
+
+  const totalMs = tipDurationMs + spinDurationMs;
+  const tipRadPerMs = (tipDeg * Math.PI / 180) / tipDurationMs;
+  const spinRadPerMs = (spinDeg * Math.PI / 180) / spinDurationMs;
+  const start = performance.now();
+  let prev = start;
+  function tick(now) {
+    if (cancelled) return;
+    const elapsed = now - start;
+    if (elapsed >= totalMs) {
+      cancelCurrentAutoRotation = null;
+      return;
+    }
+    const dt = now - prev;
+    prev = now;
+
+    if (elapsed < tipDurationMs) {
+      rotateCameraAroundWorldAxis(camera, 0, tipRadPerMs * dt);   // +X axis
+    } else {
+      rotateCameraAroundWorldAxis(camera, 2, spinRadPerMs * dt);  // +Z axis
+    }
+
+    viewers[0].renderer.resetCameraClippingRange();
+    viewers[0].renderWindow.render();
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+window.addEventListener('DOMContentLoaded', async () => {
   if (typeof vtk === 'undefined') {
     document.querySelectorAll('.viewer-canvas').forEach((c) =>
       showError(c, 'vtk.js did not load — check network or standalone build.')
@@ -229,7 +363,22 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   viewerE1 = buildViewer('viewer-e1');
   viewerE3 = buildViewer('viewer-e3');
-  wireButtons('caseBtns', 'case');
+  if (viewerE1 && viewerE3) linkCameras(viewerE1, viewerE3);
+  // onBefore: restore the captured first-load camera pose so that loadVtp's
+  // subsequent resetCamera() refits the new (ID/OOD) data along the original
+  // view direction. onChange just animates — focalPoint/position are already
+  // correctly set for the new data by then.
+  const restoreInitialView = () => {
+    if (initialCamState && viewerE1) restoreCamState(viewerE1, initialCamState);
+  };
+  const replayIntro = () => {
+    if (viewerE1 && viewerE3) startAutoRotation([viewerE1, viewerE3]);
+  };
+  wireButtons('caseBtns', 'case', replayIntro, restoreInitialView);
   wireButtons('fieldBtns', 'field');
-  refresh();
+  await refresh();
+  if (viewerE1 && viewerE3) {
+    initialCamState = captureCamState(viewerE1);
+    startAutoRotation([viewerE1, viewerE3]);
+  }
 });
